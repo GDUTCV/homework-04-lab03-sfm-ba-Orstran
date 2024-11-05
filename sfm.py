@@ -26,9 +26,19 @@ def get_init_image_ids(scene_graph: dict) -> (str, str):
     """
     max_pair = [None, None]  # dummy value
     """ YOUR CODE HERE """
-    
-
-
+    max_inliers = -1
+    for image_id1 in scene_graph:
+        neighbors = scene_graph[image_id1]
+        for image_id2 in neighbors:
+            match_id = '_'.join(sorted([image_id1, image_id2]))
+            match_file = os.path.join(RANSAC_MATCH_DIR, match_id + '.npy')
+            try:
+                matches = np.load(match_file)
+                if len(matches) > max_inliers:
+                    max_inliers = len(matches)
+                    max_pair = [image_id1, image_id2]
+            except FileNotFoundError:
+                continue
     """ END YOUR CODE HERE """
     image_id1, image_id2 = sorted(max_pair)
     return image_id1, image_id2
@@ -78,8 +88,8 @@ def get_init_extrinsics(image_id1: str, image_id2: str, intrinsics: np.ndarray) 
 
     extrinsics2 = np.zeros(shape=[3, 4], dtype=float)
     """ YOUR CODE HERE """
-    
-
+    _, R, t, _ = cv2.recoverPose(essential_mtx, points2d_1, points2d_2, intrinsics)
+    extrinsics2 = np.concatenate((R, t.reshape(3, 1)), axis=1)
 
     """ END YOUR CODE HERE """
     return extrinsics1, extrinsics2
@@ -154,7 +164,9 @@ def get_reprojection_residuals(points2d: np.ndarray, points3d: np.ndarray, intri
     """
     residuals = np.zeros(points2d.shape[0])
     """ YOUR CODE HERE """
-   
+    projected_pts, _ = cv2.projectPoints(points3d, rotation_mtx, tvec, intrinsics, None)
+    projected_pts = np.squeeze(projected_pts)
+    residuals = np.sqrt(np.sum((points2d - projected_pts) ** 2, axis=1))
 
 
     """ END YOUR CODE HERE """
@@ -202,7 +214,9 @@ def solve_pnp(image_id: str, point2d_idxs: np.ndarray, all_points3d: np.ndarray,
         2. convert the returned rotation vector to rotation matrix using cv2.Rodrigues
         3. compute the reprojection residuals
         """
-       
+        _, rvec, tvec = cv2.solvePnP(selected_pts3d, selected_pts2d, intrinsics, None, flags=cv2.SOLVEPNP_ITERATIVE)
+        rotation_mtx, _ = cv2.Rodrigues(rvec)
+        residuals = get_reprojection_residuals(points2d, points3d, intrinsics, rotation_mtx, tvec)
 
 
         """ END YOUR CODE HERE """
@@ -254,7 +268,9 @@ def add_points3d(image_id1: str, image_id2: str, all_extrinsic: dict, intrinsics
     triangulate between the image points for the unregistered matches for image_id1 and image_id2 to get new points3d
     new_points3d = triangulate(..., kp_idxs1=matches[:, 0], kp_idxs2=matches[:, 1], ...)
     """
-    
+    new_points3d = triangulate(image_id1=image_id1, image_id2=image_id2, kp_idxs1=matches[:, 0], kp_idxs2=matches[:, 1],
+                               extrinsics1=all_extrinsic[image_id1], extrinsics2=all_extrinsic[image_id2],
+                               intrinsics=intrinsics)
 
 
     """ END YOUR CODE HERE """
@@ -285,7 +301,18 @@ def get_next_pair(scene_graph: dict, registered_ids: list):
     """
     max_new_id, max_registered_id, max_num_inliers = None, None, 0
     """ YOUR CODE HERE """
-    
+    for new_id in set(scene_graph.keys()) - set(registered_ids):
+        for registered_id in set(scene_graph[new_id]) & set(registered_ids):
+            match_id = '_'.join(sorted([new_id, registered_id]))
+            match_file = os.path.join(RANSAC_MATCH_DIR, match_id + '.npy')
+            try:
+                matches = np.load(match_file)
+                if len(matches) > max_num_inliers:
+                    max_num_inliers = len(matches)
+                    max_new_id = new_id
+                    max_registered_id = registered_id
+            except FileNotFoundError:
+                continue
 
 
     
