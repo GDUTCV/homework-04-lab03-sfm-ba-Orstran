@@ -44,7 +44,15 @@ def compute_ba_residuals(parameters: np.ndarray, intrinsics: np.ndarray, num_cam
     NOTE: DO NOT USE LOOPS 
     HINT: I used np.matmul; np.sum; np.sqrt; np.square, np.concatenate etc.
     """
-    
+    # 使用高级索引获取每个点对应的相机外参和三维点
+    pts3d_camera = points3d[points3d_idxs]
+    extrinsic_camera = extrinsics[camera_idxs]
+
+    projected_pts, _ = cv2.projectPoints(pts3d_camera, extrinsic_camera[:, :, :3], extrinsic_camera[:, :, 3],
+                                         intrinsics, None)
+    projected_pts = np.squeeze(projected_pts)
+
+    residuals = np.sqrt(np.sum((points2d - projected_pts) ** 2, axis=1))
 
     
     """ END YOUR CODE HERE """
